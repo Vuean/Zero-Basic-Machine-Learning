@@ -1,0 +1,2 @@
+数据集存在于keras及很多其他框架内部，可以通过下述语句导入
+from keras.datasets import mnist #从Keras中导入mnist数据集
