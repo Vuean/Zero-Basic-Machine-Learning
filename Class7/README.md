@@ -110,6 +110,162 @@
 
  分词的最常见的方式是One-hot编码。One-hot编码很简单，就是是弄一个长长的单词表，也就是词典。每一个单词或字符、词组通过唯一整数索引i对应着词典里面的一个条目，然后将这个整数索引i转换为长度为N的二进制向量，N是词表大小。这个向量中只有第i个元素是1其余元素都为0。
 
-下图给出了5部影片所形成的词典索引，当然就是15再转换为机器可
-读的One-hot编码就是1000 0、01000等。
-在Keras中使用Tokenizer类就可以轻松完成文本分词的功能
+下图给出了5部影片所形成的词典索引，当然就是1~5再转换为机器可读的One-hot编码，就是10000、01000等。在Keras中使用Tokenizer类就可以轻松完成文本分词的功能。
+
+![fig07_One-hot编码](./figures/fig07_One-hot编码.jpg)
+
+```python
+    from keras.preprocessing.text import Tokenizer # 导入Tokenizer工具
+    words = ['Lao Wang has a Wechat account.', 'He is not a nice person.', 'Be careful.']
+    tokenizer = Tokenizer(num_words=30) # 词典大小只设定30个词(因为句子数量少)
+    tokenizer.fit_on_texts(words) # 根据3个句子编辑词典
+    sequences = tokenizer.texts_to_sequences(words) # 为3个句子根据词典里面的索引进行序号编码
+    one_hot_matrix = tokenizer.texts_to_matrix(words, mode='binary') # 进行ont-hot编码
+    word_index = tokenizer.word_index   # 词典中的单词索引总数
+    print('找到了%s个词'%len(word_index))
+    print('这3句话(单词)的序号编码' , sequences)
+    print('这3句话单词的One-hot编码', one_hot_matrix)
+
+    >>>
+    找到了13个词
+    这3句话(单词)的序号编码 [[2, 3, 4, 1, 5, 6], [7, 8, 9, 1, 10, 11], [12, 13]]
+    这3句话单词的One-hot编码 [[0. 1. 1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
+    [0. 1. 0. 0. 0. 0. 0. 1. 1. 1. 1. 1. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]
+    [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 1. 1. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.]]
+```
+
+上述代码段的操作流程如下。
+
+1. 根据文本生成词典——一共14个单词的文本，其中有1个重复的词“a”，所以经过训练词典总共收集13个词。
+
+2. 词典的大小需要预先设定——本例中设为30个词，在实际情况中当然不可能这么小了。
+
+3. 然后就可以把原始文本转换成词典索引编码和One-hot编码。
+
+这种One-hot编码所带来的问题主要有两个：一个是**维度灾难**。字典中有多少个词，就必须预先创建多少维的向量——实际字典中词的个数成千上万甚至几十万，这个向量空间太大了。
+
+降低One-hot编码数量的一种方法是**One-hot散列技巧（one-hot hashing  trick**。为了降低维度，并没有为每个单词预分配一个固定的字典编码，而是在程序中通过散列函数动态编码。这种方法中编码表的长度也就是散列空间大小是预先设定的。但是这种方法也有缺点就是可能出现**散列冲突（hash  collision）**，即如果预设长度不够，文本序列中两个不同的单词可能会共享相同的散列值，那么机器学习模型就无法区分它们所对应的单词到底是什么。
+
+如何解决散列冲突的问题呢？如果我们把散列空间的维度设定得远远大于所需要标记的个数散列冲突的可能性当然就会减小。可是这样就又回到维度灾难。
+
+### 7.3.3 词嵌入
+
+**词嵌入（word  embedding**的方法通过把One-hot编码压缩成密集矩阵来降低其维度。而且每一个维度上的值不再是二维的0-1值，而是一个有意义的数字如59、68、0.73等这样的值，包含的信息量大。同时在词嵌入的各个维度的组合过程中，还会包含词和词之间的语义关系信息，也可以视为特征向量空间的关系。
+
+词嵌入张量需要机器在对很多文本的处理过程中学习而得，是机器学习的产物。学习过程中一开始产生的都是随机的词向量，然后通过对这些词向量进行学习，词嵌入张量被不断地完善。这个学习方式与学习神经网络的权重相同，因此词嵌入过程本身就可以视为一个深度学习项目。
+
+![fig08_分词和词嵌入示意图](./figures/fig08_分词和词嵌入示意图.jpg)
+
+在实践中有以下两种词嵌入方案。
+
+- 可以在完成主任务，比如文档分类或情感预测的同时，学习词嵌入，生成属于自己这批训练文档的词嵌入张量。
+
+- 也可以直接使用别人已经训练好的词嵌入张量。
+
+下图可更直观地理解训练好的词嵌入张量：
+
+![fig09_影片形成的词嵌入空间](./figures/fig09_影片形成的词嵌入空间.jpg)
+
+将上述5部影片进行词嵌入在一个二维空间内展示，可推断出《绝命海拔》和《垂直极限》这两部影片的距离是非常接近的，而《建国大业》和《我和我的祖国》是非常接近的。《攀登者》的位置在向量空间中的位置离上述两组词向量都比较接近。因此还可以大胆推测这个向量空间的两个轴可能一个是“探险轴”，另一个是“爱国轴”。而《攀登者》这部影片则的确兼有两个特点——既有爱国情怀又有探险精神。
+
+## 7.4 用SimpleRNN鉴定评论文本
+
+先把文本向量化，然后用Keras中最简单的循环网络神经结构——SimpleRNN层构建循环神经网络，鉴定一下哪些客户的留言是好评哪些是差评。
+
+### 7.4.1 用Tokenizer给文本分词
+
+读入这个评论文本数据集：
+
+```python
+    # 读入这个评论文本数据集：
+    import numpy as np
+    import pandas as pd
+    dir = 'dataset/'
+    dir_train = dir + 'Clothing Reviews.csv'
+    df_train = pd.read_csv(dir_train)
+    df_train.head()
+```
+
+![fig10_训练集中的前五条数据](./figures/fig10_训练集中的前五条数据.jpg)
+
+然后对数据集进行分词工作。词典的大小设定为2万。
+
+```python
+    from keras.preprocessing import Tokenizer
+    X_train_lst = df_train["Review Text"].values # 将评论读入张量(训练集)
+    y_train = df_train["Rating"].values # 构建标签集
+    dictionary_size = 20000 # 设定词典的大小
+    tokenizer = Tokenizer(num_words=dictionary_size) # 初始化词典
+    tokenizer.fit_on_texts(X_train_lst) # 使用训练集创建词典索引
+    # 为所有的单词分配索引值，完成分词工作
+    X_train_tokenized_lst = tokenizer.texts_to_sequences(X_train_lst)
+```
+
+分词之后随机显示X_train_tokenized_lst的几个数据，会看到完成了以下两个目标。
+
+- 评论句子已经被分解为单词。
+
+- 每个单词已经被分配一个唯一的词典索引。
+
+X_train_tokenized_lst目前是列表类型的数据。
+
+再通过直方图显示各条评论中单词个数的分布情况，为词嵌入做准备：
+
+```python
+    import matplotlib.pyplot as plt # 导入matplotlib
+    word_per_comment = [len(comment) for comment in X_train_tokenized_lst]
+    plt.hist(word_per_comment, bins = np.arange(0, 500, 10)) # 显示评论长度分布
+    plt.show()
+```
+
+![fig11_评论长度分布](./figures/fig11_评论长度分布.jpg)
+
+上图中的评论长度分布情况表明多数评论的词数在100以内，所以只需要处理前100个词就能够判定绝大多数评论的类型。如果这个数目太大，那么将来构造出的词嵌入张量就达不到密集矩阵的效果。而且词数太长的序列，SimpleRNN处理起来效果也不好。
+
+再通过pad_sequences方法把数据截取成相同的长度。如果长度大于120将被截断，如果长度小于120将填充无意义的0值。
+
+```python
+    from keras.preprocessing.sequence import pad_sequences
+    max_comment_length = 100 # 设定评论输入长度为100，并填充默认值(如字数少于100)
+    X_train = pad_sequences(X_train_tokenized_lst, maxlen=max_comment_length)
+```
+
+至此分词工作就完成了。此时尚未做词嵌入的工作，因为词嵌入是要和神经网络的训练过程中一并进行的。
+
+### 7.4.2 构建包含词嵌入的SimpleRNN
+
+现在通过Keras来构建一个含有词嵌入的Simple RNN
+
+```python
+    from keras.models import Sequential # 导入贯序模型
+    from keras.layers.embeddings import Embedding #导入词嵌入层
+    from keras.layers import Dense #导入全连接层
+    from keras.layers import SimpleRNN #导入SimpleRNN层
+    embedding_vecor_length = 60 # 设定词嵌入向量长度为60
+    rnn = Sequential() # 贯序模型
+    rnn.add(Embedding(dictionary_size, embedding_vecor_length, 
+            input_length=max_comment_length)) # 加入词嵌入层
+    rnn.add(SimpleRNN(100)) # 加入SimpleRNN层
+    rnn.add(Dense(10, activation='relu')) # 加入全连接层
+    rnn.add(Dense(6, activation='softmax')) # 加入分类输出层
+    rnn.compile(loss='sparse_categorical_crossentropy', #损失函数
+                optimizer='adam', # 优化器
+                metrics=['acc']) # 评估指标
+    print(rnn.summary()) #打印网络模型   
+```
+
+构建流程如下：
+
+- 先通过Embedding层进行词嵌入的工作，词嵌入之后学到的向量长度为60(密集矩阵)，其维度远远小于词典的大小20000(稀疏矩阵)。
+
+- 加一个含有100个神经元的SimpleRNN层。
+
+- 再加一个含有10个神经元的全连接层。
+
+- 最后一个全连接层负责输出分类结果。使用Softmax函数激活的原因是，试图实现的是一个从0到5的多元分类。
+
+- 编译网络时损失函数选择的是sparse_categorical_crossentropy，第一次使用这个损失函数，因为这个训练集的标签是1、2、3、4、5这样的整数，而不是one-hot编码。优化器的选择是adam评估指标还是选择acc。
+
+网络结构如下：
+
+![fig12_包含词嵌入的SimpleRNN网络结构](./figures/fig12_包含词嵌入的SimpleRNN网络结构.jpg)
