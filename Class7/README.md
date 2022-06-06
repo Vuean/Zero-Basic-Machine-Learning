@@ -269,3 +269,302 @@ X_train_tokenized_lst目前是列表类型的数据。
 网络结构如下：
 
 ![fig12_包含词嵌入的SimpleRNN网络结构](./figures/fig12_包含词嵌入的SimpleRNN网络结构.jpg)
+
+### 7.4.3 训练网络并查看验证准备率
+
+网络构建完成后开始训练网络：
+
+```python
+    history = rnn.fit(X_train, y_train,
+                                    validation_split = 0.3,
+                                    epochs = 10,
+                                    batch_size = 64)
+```
+
+训练结果显示10轮之后的验证准确率为0.5606。
+
+## 7.5 从SimpleRNN到LSTM
+
+SimpleRNN不是唯一的循环神经网络类型，它只是其中一种最简单的实现。
+
+### 7.5.1 SimpleRNN的局限性
+
+SimpleRNN有一定的局限性，它可以看作瞬时记忆，它对近期序列的内容记得最清晰，根本原因在于**梯度消失**。梯度消失广泛存在于深度网络。循环神经网络通过短记忆机制，梯度消失有所改善，但是不能完全幸免。其实也就是$Uh_t$这一项随着时间轴越来越往后延伸的过程中，前面的状态对后面权重的影响越来越弱了。
+
+### 7.5.2 LSTM网络的记忆传送带
+
+LSTM网络是SimpleRNN的一个变体，也是目前更加通用的循环神经网络结构，全称为Long Short-Term  Memory，翻译成中文叫作“长‘短记忆’”网络。本质上它还是短记忆网络，只是用某种方法把“短记忆”尽可能延长了一些。
+
+简而言之，LSTM就是携带一条记忆轨道的循环神经网络，是专门针对梯度消失问题所做的改进。它增加的记忆轨道是一种携带信息跨越多个时间步的方法。可以先想象有一条平行于时间序列，处理过程的传送带序列中的信息，可以在任意位置“跳”上传送带，然后被传送到更晚的时间步，并在需要时原封不动地“跳”过去接受处理。
+
+这个思路和残差连接非常相似，其区别在于残差连接解决的是层与层之间的梯度消失问题，而LSTM解决的是循环层与神经元层内循环处理过程中的信息消失问题。
+
+简单来说，$C$轨道将携带着跨越时间步的信息。它在不同的时间步的值为$C_t$，这些信息将与输入连接和循环连接进行运算，即与权重矩阵进行点积，然后加上一个偏置以及加一个激活过程，从而影响传递到下一个时间步的状态，如右图所示。
+
+![fig13_LSTM示意图](./figures/fig13_LSTM示意图.jpg)
+
+运算规则如下：
+
+$Output_t = activation dot state_t U + dot input_t W + dot C_t V + b$
+
+不过LSTM实际上的架构要比这里所解释的复杂得多，涉及3种不同权重矩阵的变换，有的书中将这些变换规则解释为遗忘门、记忆门等。但目前所需要了解的是LSTM增添了一条记忆携带轨道，用以保证较前时间点读入的信息没有被完全遗忘继续影响后续处理过程，从而解决梯度消失问题。
+
+## 7.6 用LSTM鉴定评论文本
+
+下面回到前面的评论文本鉴定问题，不改变任何其他网络参数仅是使用LSTM层替换SimpleRNN层，然后看看效率是否会有所提升：
+
+```python
+    from keras.models import Sequential # 导入贯序模型
+    from keras.layers.embeddings import Embedding #导入词嵌入层
+    from keras.layers import Dense #导入全连接层
+    from keras.layers import LSTM #导入LSTM层
+    embedding_vecor_length = 60 # 设定词嵌入向量长度为60
+    lstm = Sequential() # 贯序模型
+    lstm.add(Embedding(dictionary_size, embedding_vecor_length, 
+            input_length=max_comment_length)) # 加入词嵌入层
+    lstm.add(LSTM(100)) # 加入LSTM层
+    lstm.add(Dense(10, activation='relu')) # 加入全连接层
+    lstm.add(Dense(6, activation='softmax')) # 加入分类输出层
+    lstm.compile(loss='sparse_categorical_crossentropy', #损失函数
+                optimizer = 'adam', # 优化器
+                metrics = ['acc']) # 评估指标
+    history = rnn.fit(X_train, y_train, 
+                        validation_split = 0.3,
+                        epochs=10, 
+                        batch_size=64)
+```
+
+## 7.7 问题定义——太阳系外哪些恒星有行星环绕
+
+在过去很长一段时间里人类是没有办法证明系外行星的存在的，因为行星是不发光的。但是随着科学的发展我们已经知道了一些方法可以用于判定恒星是否拥有行星。方法之一就是记录恒星的亮度变化，科学家们推断行星的环绕会周期性地影响这些恒星的亮度。如果收集了足够多的时序数据就可以用机器学习的方法推知哪些恒星像太阳一样拥有行星系统。
+
+这个目前仍然在不断被世界各地的科学家更新的数据集如下图所示。
+
+![fig14_恒星亮度时序数据集](./figures/fig14_恒星亮度时序数据集.jpg)
+
+其中每一行代表一颗恒星而每一列的含义如下。
+
+- 第1列LABLE：恒星是否拥有行星的标签，2代表有行星，1代表无行星。
+
+- 第2列、第3~198列：即FLUX.n字段，是科学家们通过开普勒天文望远镜记录的每一颗恒星在不同时间点的亮度，其中n代表不同时间点。
+
+这样的时序数据集因为时戳的关系，形成的张量是比普通数据集多一阶、比图像数据集少一阶的3D张量，其中第2阶就专门用于存储时戳。
+
+接下需要介绍的内容包括：
+
+1. 时序数据的导入与处理。
+
+2. 不同类型的神经网络层的组合，使用如CNN和RNN的组合。
+
+3. 面对分类极度不平衡数据集时的阈值调整。
+
+4. 使用函数式API。
+
+## 7.8 用循环神经网络处理时序问题
+
+### 7.8.1 时序数据的导入和处理
+
+首先把数据从文件中读入Dataframe：
+
+```python
+    import numpy as np
+    import pandas as pd
+    df_train = pd.read_csv('./dataset/exoTrain.csv')
+    df_test = pd.read_csv('./dataset/exoTest.csv')
+    print(df_train.head()) # 输入头几行数据
+    print(df_train.info()) # 输出训练集信息
+```
+
+数据集是预先排过序的，下面的代码将其进行乱序排列：
+
+```python
+    from sklearn.utils import shuffle # 导入乱序工具
+    df_train = shuffle(df_train)
+    df_test = shuffle(df_test)
+```
+
+下面的代码将构建特征集和标签集，把第2~198列的数据都读入X特征集，第1列的数据都读入y标签集。
+
+注意标签数据目前的分类是2有行星和1无行星两个值。我们要把标签值减1，将1、2分类值转换成惯用的0-1分类值。
+
+```python
+    X_train = df_train.iloc[:,1:].values # 构建特征集（训练）
+    y_train = df_train.iloc[:,0].values # 构建标签集（训练）
+    X_test = df_test.iloc[:,1:].values # 构建特征集（测试）
+    y_test = df_test.iloc[:,0].values # 构建标签集（测试）
+    y_train = y_train - 1   # 标签转换成惯用的(0，1)分类
+    y_test = y_test - 1
+    print (X_train) # 打印训练集中的特征
+    print (y_train) # 打印训练集中的标签
+```
+
+从输出结果可以看出，目前**张量格式还不对**。大家要牢记时序数据的结构要求是：样本时戳特征。此处增加一个轴即可。
+
+```python
+    X_train = np.expand_dims(X_train, axis=2) # 张量升阶，以满足序列数据集的要求
+    X_test = np.expand_dims(X_test, axis=2) # 张量升阶，以满足序列数据集的要求
+```
+
+输出X_train.shape为(5087, 3197, 1)，符合时序数据结构的规则，5087个样本，3197个时间戳，1维的特征光线的强度。
+
+### 7.8.2 构建CNN和RNN的组合
+
+介绍一个相对小众的技巧，就是通过一维卷积网络即Conv1D层组合循环神经网络层来处理序列数据。
+
+Conv1D层接收形状为样本时戳或序号特征的3D张量作为输入并输出同样形状的3D张量。卷积窗口作用于时间轴输入张量的第二个轴上，此时的卷积窗口不是2D的而是1D的。
+
+下面的这段代码构建了一个CNN和RNN联合发挥作用的神经网络：
+
+```python
+    from keras.models import Sequential # 导入序贯模型
+    from keras import layers # 导入所有类型的层
+    from keras.optimizers import Adam # 导入优化器
+    model = Sequential() # 序贯模型
+    model.add(layers.Conv1D(32, kernel_size = 10, strides = 4,
+                        input_shape = (3197, 1))) # 1D CNN层
+    model.add(layers.MaxPooling1D(pool_size = 4, strides = 2)) # 池化层
+    model.add(layers.GRU(256, return_sequences=True)) # 关键，GRU层要够大
+    model.add(layers.Flatten()) # 展平
+    model.add(layers.Dropout(0.5)) # Dropout层
+    model.add(layers.BatchNormalization()) # 批标准化
+    model.add(layers.Dense(1, activation='sigmoid')) # 分类输出层
+    opt = Adam(lr = 0.0001, beta_1=0.9, beta_2=0.999, decay=0.01)
+    model.compile(optimizer=opt, # 优化器
+                                loss = 'binary_crossentropy', # 交叉熵
+                                metrics = ['accuracy']) # 准确率
+```
+
+现在这个网络模型就搭建好了。因为要使用很多种类型的层所以没有一一导入，而是通过layers.Conv1D、layers.GRU这样的方式指定层类型。此外还通过Batch Normalization进行批标准化防止过拟合。这个技巧也很重要。
+
+```python
+    history = model.fit(X_train,y_train, # 训练集
+                    validation_split = 0.2, # 部分训练集数据拆分成验证集
+                    batch_size = 128, # 批量大小
+                    epochs = 4, # 训练轮次
+                    shuffle = True) # 乱序
+```
+
+### 7.8.3 输出阈值的调整
+
+在验证集上网络的预测准确率是非常高的达到99.41%。
+
+打开exo Train.csv和exo Test.csv看一下标签就会发现，在训练集中5000多个被观测的恒星中只有37个恒星已被确定拥有属于自己的行星。而测试集只有训练集的十分之一，500多个恒星中只有5个恒星拥有属于自己的行星。
+
+这个数据集中标签的类别是非常不平衡的。因此问题的关键绝不在于测得有多准，而在于我们能否像一个真正的天文学家那样在茫茫星海中发现这5个类日恒星也就是拥有行星的恒星。
+
+下面就对测试集进行预测并通过分类报告其中包含精确率、召回率和F1分数等指标和混淆矩阵进行进一步的评估。这两个工具才是分类不平衡数据集的真正有效指标。
+
+```python
+    from sklearn.metrics import classification_report # 分类报告
+    from sklearn.metrics import confusion_matrix # 混淆矩阵
+    y_prob = model.predict(X_test) # 对测试集进行预测
+    y_pred =  np.where(y_prob > 0.5, 1, 0) #将概率值转换成真值
+    cm = confusion_matrix(y_pred, y_test)
+    print('Confusion matrix:\n', cm, '\n')
+    print(classification_report(y_pred, y_test))
+```
+
+通过结果发现，目前项目预测结果相当不理想，F1分数为0。针对这类分类极度不平衡的问题来说，应该通过观察模型输出的概率值来调整并确定最终分类阈值，这也叫作**阈值调整**。
+
+下面把分类概率的参考阈值从0.5调整至0.15，即大于0.15就认为是分类1，小于0.15就认为是分类0，重新输出分类报告和混淆矩阵：
+
+```python
+    y_pred =  np.where(y_prob > 0.15, 1, 0) # 进行阈值调整
+    cm = confusion_matrix(y_pred, y_test) 
+    print('Confusion matrix:\n', cm, '\n')
+    print(classification_report(y_pred, y_test))
+```
+
+可以发现通过调整阈值后，评估效果明显有所改善。
+
+### 7.8.4 使用函数式API
+
+目前为止所看到的神经网络都是用序贯模型的线性堆叠，网络中只有一个输入和一个输出，平铺直叙。
+
+这种序贯模型可以解决大多数的问题。但是针对某些复杂任务有时需要构建出更复杂的模型，形成**多模态（multimodal）输入**或**多头（multihead）输出**，如下图所示：
+
+![fig15_多模态输入和多头输出](./figures/fig15_多模态输入和多头输出.jpg)
+
+举例来说：
+
+- 某个价格预测的任务其信息包括商品图片、文本表述以及其他元数据型号、质地、产地等。完成这个任务需要通过卷积网络处理图片，需要通过循环神经网络处理文本信息，还需要通过全连接网络处理其他数据信息，然后合并各种模块进行价格预测。这是**多模态输入**。
+
+- 一个维基百科的经济类文章里面包含大量的数据资料，需要通过循环神经网络进行文本处理，但是不仅要预测文章的类型，还要对经济数据进行推测。这是**多头输出**。
+
+要搭建多模态和多头架构的网络需要使用**函数式API**。
+
+函数式API就是像使用Python函数一样，使用Keras模型可以直接操作张量，也可以把层当作函数来使用接收张量并返回张量。通过它可以实现模块的拼接组合、把不同的输入层合并或为一个模块生成多个输出。
+
+下面用函数式API的方法构建刚才的Conv1D +GRU网络：
+
+```python
+    from keras import layers # 导入各种层
+    from keras.models import Model # 导入模型
+    from keras.optimizers import Adam # 导入Adam优化器
+    input = layers.Input(shape=(3197, 1)) # Input
+    # 通过函数式API构建模型
+    x = layers.Conv1D(32, kernel_size=10, strides=4)(input)
+    x = layers.MaxPooling1D(pool_size=4, strides=2)(x)
+    x = layers.GRU(256, return_sequences=True)(x)
+    x = layers.Flatten()(x)
+    x = layers.Dropout(0.5)(x)
+    x = layers.BatchNormalization()(x)
+    output = layers.Dense(1, activation='sigmoid')(x) # Output
+    model = Model(input, output) 
+    model.summary() # 显示模型的输出
+    opt = Adam(lr=0.0001, beta_1=0.9, beta_2=0.999, decay=0.01) # 设置优化器
+    model.compile(optimizer=opt, # 优化器
+                loss = 'binary_crossentropy', # 交叉熵
+                metrics=['accuracy']) # 准确率
+```
+
+如下图所示双向RNN模型的思路是把同一个序列正着训练一遍，反着再训练一遍，然后把结果结合起来输出。
+
+![fig16_双向RNN模型](./figures/fig16_双向RNN模型.jpg)
+
+下面就构建这种双向网络。我们需要做两件事，一是把数据集做一个逆序的复制品准备输入网络，二是用API搭建多头网络。
+
+首先在给输入数据集升维之前数据集进行逆序：
+
+```python
+    X_train_rev = [X[::-1] for X in X_train]
+    X_test_rev = [X[::-1] for X in X_test]
+    X_train = np.expand_dims(X_train, axis=2)
+    X_train_rev = np.expand_dims(X_train_rev, axis=2)
+    X_test = np.expand_dims(X_test, axis=2)
+    X_test_rev = np.expand_dims(X_test_rev, axis=2)
+```
+
+再构建多头网络：
+
+```python
+    # 构建正向网络
+    input_1 = layers.Input(shape=(3197, 1))
+    x = layers.GRU(32, return_sequences=True)(input_1)
+    x = layers.Flatten()(x)
+    x = layers.Dropout(0.5)(x)
+    # 构建逆向网络
+    input_2 = layers.Input(shape=(3197, 1))
+    y = layers.GRU(32, return_sequences=True)(input_2)
+    y = layers.Flatten()(y)
+    y = layers.Dropout(0.5)(y)
+    # 连接两个网络
+    z = layers.concatenate([x, y])
+    output = layers.Dense(1, activation='sigmoid')(z)
+    model = Model([input_1,input_2], output)
+    model.summary()
+```
+
+双向RNN模型结构如下图所示：
+
+![fig17_程序编译出来的双向RNN模型结](./figures/fig17_程序编译出来的双向RNN模型结.jpg)
+
+最后在训练模型时要同时指定正序、逆序两个数据集作为输入：
+
+```python
+    history = model.fit([X_train, X_train_rev], y_train, # 训练集
+                    validation_split = 0.2, # 部分训练集数据拆分成验证集
+                    batch_size = 128, # 批量大小
+                    epochs = 1, # 训练轮次
+                    shuffle = True) # 乱序
+```
