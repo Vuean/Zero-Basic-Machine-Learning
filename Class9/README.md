@@ -335,5 +335,81 @@ Ada即adaptive，自适应。Ada Boost是给不同的样本分配不同的权重
 下面应用Ada Boost算法来重新解决银行客户流失问题：
 
 ```python
-
+    from sklearn.ensemble import AdaBoostClassifier # 导入AdaBoost模型
+    dt = DecisionTreeClassifier()  # 选择决策树分类器作为AdaBoost的基准算法
+    ada = AdaBoostClassifier(dt)
+    # 使用网格化搜索优化参数
+    ada_param_grid = {"base_estimator__criterion" : ["gini", "entropy"],
+                    "base_estimator__splitter" :   ["best", "random"],
+                    "base_estimator__random_state" :   [7,9,10,12,15],
+                    "algorithm" : ["SAMME","SAMME.R"],
+                    "n_estimators" :[1,2,5,10],
+                    "learning_rate":  [0.0001, 0.001, 0.01, 0.1, 0.2, 0.3,1.5]}
+    ada_gs = GridSearchCV(ada,param_grid = ada_param_grid, 
+                            scoring="f1", n_jobs= 10, verbose = 1)
+    ada_gs.fit(X_train,y_train) # 拟合模型
+    ada_gs = ada_gs.best_estimator_ # 最佳模型
+    y_pred = ada_gs.predict(X_test) # 进行预测
+    print("Adaboost测试准确率: {:.2f}%".format(ada_gs.score(X_test, y_test)*100))
+    print("Adaboost测试F1分数: {:.2f}%".format(f1_score(y_test, y_pred)*100))
 ```
+
+### 9.3.2 梯度提升算法
+
+梯度提升（Granding  Boosting）算法是梯度下降和Boosting这两种算法结合的产物。因为常见的梯度提升都是基于决策树的，有时就直接叫作GBDT，即梯度提升决策树（Granding  Boosting  Decision  Tree）。
+
+不同于Ada Boost只是对样本进行加权，GBDT算法中还会定义一个损失函数并对损失和机器学习模型所形成的函数进行求导，每次生成的模型都是沿着前面模型的负梯度方向一阶导数进行优化，直到发现全局最优解。也就是说GBDT的每一次迭代中新的树所学习的内容是之前所有树的结论和损失对其拟合得到一个当前的树，这棵新的树就相当于是之前每一棵树效果的累加。
+
+梯度提升算法对于回归问题目前被认为是最优算法之一。下面用梯度提升算法来解决银行客户流失问题：
+
+```python
+    from sklearn.ensemble import GradientBoostingClassifier # 导入梯度提升分类器
+    gb = GradientBoostingClassifier() # 梯度提升分类器
+    # 使用网格搜索优化参数
+    gb_param_grid = {'loss' : ["deviance"],
+                    'n_estimators' : [100,200,300],
+                    'learning_rate': [0.1, 0.05, 0.01],
+                    'max_depth': [4, 8],
+                    'min_samples_leaf': [100,150],
+                    'max_features': [0.3, 0.1]}
+    gb_gs = GridSearchCV(gb,param_grid = gb_param_grid,
+                        scoring="f1", n_jobs= 10, verbose = 1)
+    gb_gs.fit(X_train,y_train) # 拟合模型
+    gb_gs = gb_gs.best_estimator_ # 最佳模型
+    y_pred = gb_gs.predict(X_test) # 进行预测
+    print("梯度提升测试准确率: {:.2f}%".format(gb_gs.score(X_test, y_test)*100))
+    print("梯度提升测试F1分数: {:.2f}%".format(f1_score(y_test, y_pred)*100))
+```
+
+### 9.3.3 XGBoost算法
+
+极端梯度提升(eXtreme  Gradient  Boosting, XGBoost）有时候也直接叫作XGB，和GBDT类似也会定义一个损失函数。不同于GBDT只用到一阶导数信息，XGBoost会利用泰勒展开式把损失函数展开到二阶后求导利用了二阶导数信息，这样在训练集上的收敛会更快。
+
+下面用XGBoost来解决银行客户流失问题
+
+```python
+    from xgboost import XGBClassifier # 导入XGB分类器
+    xgb = XGBClassifier() # XGB分类器
+    # 使用网格搜索优化参数
+    xgb_param_grid = {'min_child_weight': [1, 5, 10],
+                    'gamma': [0.5, 1, 1.5, 2, 5],
+                    'subsample': [0.6, 0.8, 1.0],
+                    'colsample_bytree': [0.6, 0.8, 1.0],
+                    'max_depth': [3, 4, 5]}
+    xgb_gs = GridSearchCV(xgb,param_grid = xgb_param_grid,  
+                        scoring="f1", n_jobs= 10, verbose = 1)
+    xgb_gs.fit(X_train,y_train) # 拟合模型
+    xgb_gs = xgb_gs.best_estimator_ # 最佳模型
+    y_pred = xgb_gs.predict(X_test) # 进行预测
+    print("XGB测试准确率: {:.2f}%".format(xgb_gs.score(X_test, y_test)*100))
+    print("XGB测试F1分数: {:.2f}%".format(f1_score(y_test, y_pred)*100))
+```
+
+### 9.3.4 Bagging算法与Boosting算法的不同之处
+
+**Bagging是削弱过于精准的基模型避免过拟合，Boosting是提升比较弱的基模型可提高精度**。
+
+Bagging是降低方差利用基模型的独立性而Boosting是降低偏差基于同一个基模型通过增加被错分的样本的权重和梯度下降来提升模型性能
+
+## 9.4 Stacking/Blending算法——以预测结果作为新特征
+
